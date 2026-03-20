@@ -107,7 +107,10 @@ app.use((err, req, res, next) => {
 });
 
 // ── Start Server ─────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5002;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+// Default to localhost:8080 when PORT is not set. Bind explicitly to
+// 127.0.0.1 to ensure the server listens on localhost only in dev.
+const PORT = process.env.PORT || 8080;
+const HOST = process.env.HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
+    console.log(`🚀 Server running at http://${HOST}:${PORT} [${process.env.NODE_ENV || 'development'}]`);
 });
