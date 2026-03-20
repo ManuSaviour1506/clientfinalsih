@@ -5,7 +5,7 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env src/server.js",
+    "start": "node src/server.js",
     "dev": "nodemon --exec 'node --env-file=.env' src/server.js",
     "seed": "node --env-file=.env seeder.js -i",
     "seed:destroy": "node --env-file=.env seeder.js -d"

@@ -10,6 +10,8 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
+import dotenv from "dotenv";
+dotenv.config();
 
 // Routes
 import authRoutes        from './routes/auth.routes.js';
@@ -107,10 +109,8 @@ app.use((err, req, res, next) => {
 });
 
 // ── Start Server ─────────────────────────────────────────────────────
-// Default to localhost:8080 when PORT is not set. Bind explicitly to
-// 127.0.0.1 to ensure the server listens on localhost only in dev.
-const PORT = process.env.PORT || 8080;
-const HOST = process.env.HOST || '127.0.0.1';
-app.listen(PORT, HOST, () => {
-    console.log(`🚀 Server running at http://${HOST}:${PORT} [${process.env.NODE_ENV || 'development'}]`);
+const PORT = process.env.PORT || 5002;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
