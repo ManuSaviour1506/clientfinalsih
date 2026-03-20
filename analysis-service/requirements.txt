@@ -4,6 +4,5 @@ opencv-python-headless
 mediapipe
 numpy
 python-multipart
-axios-python-equivalent  # Usually handled by 'requests' or 'httpx'
-requests
-python-dotenv
+joblib
+requests 
