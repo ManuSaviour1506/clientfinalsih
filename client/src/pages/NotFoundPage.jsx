@@ -1,19 +1,25 @@
+// NotFoundPage.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-const NotFoundPage = () => {
-    return (
-        <div className="text-center py-16">
-            <h1 className="text-6xl font-extrabold text-blue-600">404</h1>
-            <h2 className="mt-4 text-3xl font-bold text-gray-900">Page Not Found</h2>
-            <p className="mt-2 text-gray-600">Sorry, the page you are looking for does not exist.</p>
-            <div className="mt-6">
-                <Link to="/" className="text-white bg-blue-600 hover:bg-blue-700 font-medium rounded-lg text-sm px-5 py-2.5 text-center">
-                    Go Home
-                </Link>
-            </div>
+const NotFoundPage = () => (
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4 text-center">
+        <div className="text-8xl font-black text-amber-500 leading-none">404</div>
+        <h2 className="mt-4 text-2xl font-bold text-gray-900">Page Not Found</h2>
+        <p className="mt-2 text-gray-500 max-w-sm">
+            Looks like this page went off-track. Let's get you back to the field.
+        </p>
+        <div className="mt-8 flex gap-3">
+            <Link to="/"
+                className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-6 py-2.5 rounded-xl transition-colors shadow-sm">
+                Go Home
+            </Link>
+            <Link to="/dashboard"
+                className="bg-white hover:bg-gray-50 text-gray-700 font-bold px-6 py-2.5 rounded-xl border border-gray-200 transition-colors">
+                Dashboard
+            </Link>
         </div>
-    );
-};
+    </div>
+);
 
 export default NotFoundPage;

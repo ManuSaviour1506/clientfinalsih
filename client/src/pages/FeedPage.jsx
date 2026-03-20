@@ -5,38 +5,50 @@ import CreatePost from '../components/posts/CreatePost';
 import Spinner from '../components/common/Spinner';
 
 const FeedPage = () => {
-    const [posts, setPosts] = useState([]);
+    const [posts, setPosts]   = useState([]);
     const [loading, setLoading] = useState(true);
-
-    // This function fetches the posts from the backend API
-    const fetchPosts = async () => {
-        try {
-            const response = await api.get('/posts');
-            setPosts(response.data.data);
-        } catch (error) {
-            console.error('Failed to fetch posts:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const [error, setError]   = useState('');
 
     useEffect(() => {
-        fetchPosts();
+        api.get('/posts')
+            .then(res => setPosts(res.data.data || []))
+            .catch(() => setError('Failed to load posts.'))
+            .finally(() => setLoading(false));
     }, []);
 
-    if (loading) {
-        return <Spinner />;
-    }
+    // BUG FIX 1: onPostCreated triggered a full refetch of all posts.
+    // Prepend the new post directly to avoid unnecessary API call.
+    const handlePostCreated = (newPost) => {
+        setPosts(prev => [newPost, ...prev]);
+    };
 
     return (
-        <div className="container mx-auto p-4">
-            <h1 className="text-2xl font-bold mb-4">Community Feed</h1>
-            <CreatePost onPostCreated={fetchPosts} />
-            <div className="mt-4">
-                {/* Here, it maps over the posts and renders a PostCard for each one */}
-                {posts.map((post) => (
-                    <PostCard key={post._id} post={post} />
-                ))}
+        <div className="min-h-screen bg-gray-50">
+            <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+                <div>
+                    <h1 className="text-2xl font-black text-gray-900">Community Feed</h1>
+                    <p className="text-sm text-gray-500 mt-0.5">Share your performance videos with the community</p>
+                </div>
+
+                <CreatePost onPostCreated={handlePostCreated} />
+
+                {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">{error}</div>
+                )}
+
+                {loading ? (
+                    <div className="flex justify-center py-16"><Spinner /></div>
+                ) : posts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                        <span className="text-5xl mb-3">📭</span>
+                        <p className="font-semibold">No posts yet</p>
+                        <p className="text-sm mt-1">Be the first to share your performance!</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {posts.map(post => <PostCard key={post._id} post={post} />)}
+                    </div>
+                )}
             </div>
         </div>
     );

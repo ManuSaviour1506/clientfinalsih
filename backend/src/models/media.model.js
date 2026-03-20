@@ -1,42 +1,60 @@
-const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+// BUG FIX 1: This file used CommonJS (require/module.exports) while every
+// other file in the project uses ESM (import/export). This causes:
+//   "require is not defined in ES module scope"
+// when Node runs with "type":"module" in package.json (which this project uses).
+// Converted the entire file to ESM syntax.
 
-// Define the structure of a media document
-const mediaSchema = new Schema({
+import mongoose from 'mongoose';
+
+const { Schema } = mongoose;
+
+const mediaSchema = new Schema(
+  {
     fileName: {
-        type: String,
-        required: true,
-        trim: true // Removes whitespace from both ends
+      type: String,
+      required: true,
+      trim: true,
     },
     filePath: {
-        type: String,
-        required: true,
-        unique: true // Ensures no two files have the same path
+      type: String,
+      required: true,
+      unique: true,
     },
     fileType: {
-        type: String,
-        required: true,
-        enum: ['image/jpeg', 'image/png', 'video/mp4', 'application/pdf'] // Restricts to specific MIME types
+      type: String,
+      required: true,
+      // BUG FIX 2: 'video/mp4' only is too restrictive — mobile devices often
+      // upload video/quicktime (.mov) or video/x-matroska (.mkv).
+      // Widened to cover common upload formats.
+      enum: [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'video/mp4',
+        'video/quicktime',
+        'video/x-matroska',
+        'application/pdf',
+      ],
     },
     size: {
-        type: Number, // Size in bytes
-        required: true
+      type: Number, // bytes
+      required: true,
     },
     altText: {
-        type: String,
-        default: 'Media file' // Default value for accessibility
+      type: String,
+      default: 'Media file',
     },
     uploadedBy: {
-        type: Schema.Types.ObjectId,
-        ref: 'User', // Creates a reference to the User model
-        required: true
-    }
-}, {
-    timestamps: true // Automatically adds createdAt and updatedAt fields
-});
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+  },
+  { timestamps: true }
+);
 
-// Create the Media model from the schema
-const Media = mongoose.model('Media', mediaSchema);
+// BUG FIX 3: No index on uploadedBy — any "get my media" query does
+// a full collection scan. Added compound index for common query pattern.
+mediaSchema.index({ uploadedBy: 1, createdAt: -1 });
 
-// Export the model so it can be used elsewhere in the application
-module.exports = Media;
+export const Media = mongoose.model('Media', mediaSchema);

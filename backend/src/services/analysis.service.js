@@ -1,56 +1,71 @@
-// src/services/analysis.service.js
-import axios from 'axios';
-import FormData from 'form-data';
 import ImageKit from 'imagekit';
-import fs from 'fs';
 
-const imagekit = new ImageKit({
-    publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
-    privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
-    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
-});
+// Lazy init — reads env vars at call time, not at import time
+let _imagekit = null;
+const getImageKit = () => {
+    if (!_imagekit) {
+        _imagekit = new ImageKit({
+            publicKey:   process.env.IMAGEKIT_PUBLIC_KEY,
+            privateKey:  process.env.IMAGEKIT_PRIVATE_KEY,
+            urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+        });
+    }
+    return _imagekit;
+};
 
 /**
- * Upload a video to ImageKit as private
- * Returns filePath (not public URL)
+ * Upload a buffer to ImageKit.
+ * Returns the full canonical URL of the uploaded file.
+ *
+ * IMAGEKIT_URL_ENDPOINT = "https://ik.imagekit.io/m48d2exwv/sportsanalyzer"
+ * Uploaded file URL     = "https://ik.imagekit.io/m48d2exwv/sportsanalyzer/athlete_submissions/video.mp4"
  */
-export const uploadToImageKit = async (fileBuffer, fileName) => {
+export const uploadToImageKit = async (
+    fileBuffer,
+    fileName,
+    folder = "athlete_submissions"
+) => {
     try {
-        const response = await imagekit.upload({
+        const response = await getImageKit().upload({
             file: fileBuffer,
             fileName,
-            folder: "athlete_submissions",
+            folder,
             useUniqueFileName: true,
-            isPrivateFile: true, // 👈 private file
+            // Keep files public so video playback works without signed URLs.
+            // Set IMAGEKIT_PRIVATE_FILES=true in .env only if you need DRM.
+            isPrivateFile: process.env.IMAGEKIT_PRIVATE_FILES === 'true',
         });
 
-        return response.filePath; // save filePath in DB
+        // BUG FIX: response.url is the full canonical URL from ImageKit SDK.
+        // Always return this — never manually concatenate endpoint + filePath,
+        // because filePath starts with the account ID (/m48d2exwv/...) which
+        // would double-prefix when combined with the endpoint.
+        console.log(`[IMAGEKIT] Uploaded: ${response.url}`);
+        return response.url;
+
     } catch (error) {
         console.error("ImageKit Upload Error:", error.message);
-        throw new Error("Failed to upload video.");
+        throw new Error(`Failed to upload to ImageKit: ${error.message}`);
     }
 };
 
 /**
- * Trigger video analysis in background
+ * Generate a signed playback URL for a private ImageKit file.
+ * Strips the endpoint prefix to get the IK-relative path.
  */
-export const triggerVideoAnalysis = async (videoFilePath, submissionId, testType) => {
-    try {
-        const url = `${process.env.IMAGEKIT_URL_ENDPOINT}${videoFilePath}`;
+export const getSignedPlaybackUrl = (fileUrl, expireSeconds = 3600) => {
+    const endpoint = (process.env.IMAGEKIT_URL_ENDPOINT || '').replace(/\/$/, '');
 
-        const formData = new FormData();
-        formData.append('submissionId', submissionId);
-        formData.append('testType', testType);
-        formData.append('videoUrl', url);
-
-        axios.post(process.env.ANALYSIS_SERVICE_URL, formData, {
-            headers: formData.getHeaders(),
-        }).catch(err => {
-            console.error(`Failed to trigger analysis for submission ${submissionId}:`, err.message);
-        });
-
-        console.log(`Analysis triggered for submission: ${submissionId}`);
-    } catch (error) {
-        console.error("Error triggering analysis service:", error.message);
+    let ikPath = fileUrl || '';
+    if (ikPath.startsWith(endpoint)) {
+        ikPath = ikPath.slice(endpoint.length);
     }
+    ikPath = ikPath.split('?')[0];
+    if (!ikPath.startsWith('/')) ikPath = '/' + ikPath;
+
+    return getImageKit().url({
+        path: ikPath,
+        signed: true,
+        expireSeconds,
+    });
 };
