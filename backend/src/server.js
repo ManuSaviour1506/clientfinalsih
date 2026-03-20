@@ -30,8 +30,6 @@ const app = express();
 // ── CORS ─────────────────────────────────────────────────────────────
 const allowedOrigins = [
     process.env.CORS_ORIGIN,
-    "http://localhost:5173",
-    "http://localhost:5174",
 ].filter(Boolean); // BUG FIX 2: filter(Boolean) removes undefined if CORS_ORIGIN
                     // is not set — otherwise indexOf(undefined) can match
                     // requests from tools that send no Origin header.
