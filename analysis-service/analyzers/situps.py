@@ -1,58 +1,64 @@
 import cv2
 import mediapipe as mp
-from .utils import calculate_angle
+from analyzers.utils import calculate_angle
 
-def count_reps(video_path: str) -> int:
+
+def count_situps(video_path: str) -> dict:
     """
-    Counts the number of sit-ups performed in a video.
+    Counts sit-ups with deep feedback.
     """
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print("Error: Could not open video.")
-        return 0
-    
-    counter = 0
-    state = "down"  # Start in the 'down' position
+        return {"raw_score": 0, "feedback": ["Could not open video."], "report": {}}
+
+    counter, stage = 0, None
+    mistakes, strengths, tips = [], [], []
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
         results = pose.process(image)
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         try:
             landmarks = results.pose_landmarks.landmark
-            
-            # Get coordinates for shoulder, hip, and knee
-            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
-            knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
-            
-            # Calculate angle
+            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x,
+                        landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+            hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x,
+                   landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+            knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x,
+                    landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
+
             angle = calculate_angle(shoulder, hip, knee)
-            
-            # State machine logic
-            if angle < 100:  # Threshold for 'up' position
-                if state == "down":
-                    counter += 1
-                    state = "up"
-            
-            if angle > 160:  # Threshold for 'down' position
-                if state == "up":
-                    state = "down"
+
+            if angle > 160:
+                stage = "down"
+            if angle < 90 and stage == 'down':
+                stage = "up"
+                counter += 1
+                strengths.append("Good sit-up form with full range")
+            elif angle > 120 and stage == 'up':
+                if "Partial sit-ups" not in mistakes:
+                    mistakes.append("Not sitting up high enough")
+                    tips.append("Bring chest closer to knees")
+
         except:
-            # Landmark not visible, skip frame
             pass
-            
+
     cap.release()
     pose.close()
-    
-    return counter
+
+    report = {
+        "total_reps": counter,
+        "mistakes": mistakes,
+        "strengths": strengths,
+        "tips": tips,
+        "analysis_summary": f"Completed {counter} sit-ups with feedback provided."
+    }
+    feedback = strengths + mistakes + tips
+
+    return {"raw_score": counter, "feedback": feedback, "report": report}

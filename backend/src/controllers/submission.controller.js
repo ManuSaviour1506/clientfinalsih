@@ -6,101 +6,119 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
-import mongoose from 'mongoose'; // Import mongoose
+import mongoose from "mongoose";
 
 const createSubmission = asyncHandler(async (req, res) => {
-    const { testId } = req.body;
-    const athleteId = req.user._id;
-    const videoFile = req.file;
+  const { testId } = req.body;
+  const athleteId = req.user._id;
+  const videoFile = req.file;
 
-    if (!videoFile) {
-        return res.status(400).json(new ApiResponse(400, null, "Video file is required."));
-    }
+  if (!videoFile) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Video file is required."));
+  }
 
-    if (!mongoose.Types.ObjectId.isValid(testId)) {
-        if (videoFile && fs.existsSync(videoFile.path)) {
-            fs.unlinkSync(videoFile.path);
-        }
-        return res.status(400).json(new ApiResponse(400, null, "Invalid Test ID format."));
-    }
+  if (!mongoose.Types.ObjectId.isValid(testId)) {
+    if (videoFile) fs.unlinkSync(videoFile.path);
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Invalid Test ID format."));
+  }
 
+  const test = await Test.findById(testId);
+  if (!test) {
+    if (videoFile) fs.unlinkSync(videoFile.path);
+    return res.status(404).json(new ApiResponse(404, null, `Test not found.`));
+  }
 
-    const test = await Test.findById(testId);
-    if (!test) {
-        // Clean up the uploaded file if the test is invalid
-        if (videoFile && fs.existsSync(videoFile.path)) {
-            fs.unlinkSync(videoFile.path);
-        }
-        return res.status(404).json(new ApiResponse(404, null, `Test with ID '${testId}' not found.`));
-    }
+  let analysisData = {};
+  let videoUrl = null;
 
-    let score = 0;
-    let videoUrl = null;
-    let status = "completed";
+  try {
+    const videoBuffer = fs.readFileSync(videoFile.path);
 
-    try {
-        const videoBuffer = fs.readFileSync(videoFile.path);
+    const formData = new FormData();
+    formData.append("video", videoBuffer, {
+      filename: videoFile.originalname,
+      contentType: videoFile.mimetype,
+    });
+    formData.append("testType", test.name);
 
-        const formData = new FormData();
-        formData.append('video', videoBuffer, {
-            filename: videoFile.originalname,
-            contentType: videoFile.mimetype,
-        });
-        formData.append('testType', test.name);
-
-        if (test.name === 'Vertical Jump' && req.user.height) {
-            formData.append('athleteHeightCm', req.user.height);
-        }
-        // NEW CODE FOR PUSH-UPS
-        if (test.name === 'Push-ups' && req.user.weight) {
-            // You might add logic here if push-ups require weight, but we'll keep it simple for now.
-        }
-
-        const analysisResponse = await axios.post(
-            process.env.ANALYSIS_SERVICE_URL,
-            formData,
-            {
-                headers: {
-                    ...formData.getHeaders(),
-                    'X-Internal-API-Secret': process.env.ANALYSIS_API_SECRET,
-                },
-            }
-        );
-
-        score = analysisResponse.data.score;
-
-        const uploadResult = await uploadToImageKit(videoBuffer, videoFile.originalname);
-        videoUrl = uploadResult.url;
-
-    } catch (error) {
-        console.error("Error during analysis or upload:", error.message);
-        if (videoFile && fs.existsSync(videoFile.path)) {
-            fs.unlinkSync(videoFile.path);
-        }
-        return res.status(500).json(new ApiResponse(500, null, "Failed to process video."));
-    } finally {
-        if (videoFile && fs.existsSync(videoFile.path)) {
-            fs.unlinkSync(videoFile.path);
-        }
+    if (test.name === "Vertical Jump" && req.user.height) {
+      formData.append("athleteHeightCm", req.user.height);
     }
 
-    const submission = await Submission.create({
-        athlete: athleteId,
-        test: testId,
-        videoUrl: videoUrl,
-        score: score,
-        status: status,
-    });
+    // Call Python analysis service
+    const analysisResponse = await axios.post(
+      process.env.ANALYSIS_SERVICE_URL,
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(),
+          "X-Internal-API-Secret": process.env.ANALYSIS_API_SECRET,
+        },
+      }
+    );
 
-    return res.status(201).json(new ApiResponse(201, submission, "Analysis complete."));
+    analysisData = analysisResponse.data;
+
+    // Upload video to ImageKit
+    const uploadedFilePath = await uploadToImageKit(
+      videoBuffer,
+      videoFile.originalname
+    );
+    videoUrl = `${process.env.IMAGEKIT_URL_ENDPOINT}${uploadedFilePath}`;
+  } catch (error) {
+    console.error("Error during analysis or upload:", error.message);
+    return res
+      .status(500)
+      .json(new ApiResponse(500, null, "Failed to process video."));
+  } finally {
+    if (videoFile && fs.existsSync(videoFile.path)) {
+      fs.unlinkSync(videoFile.path);
+    }
+  }
+
+  // Save submission including feedback + report
+  const submission = await Submission.create({
+    athlete: athleteId,
+    test: testId,
+    videoUrl: videoUrl,
+    score: analysisData.score || 0,
+    status: "completed",
+    feedback: analysisData.feedback || [], // ✅ Save feedback
+    analysisReport: analysisData.report || {}, // ✅ Save detailed report
+  });
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, submission, "Analysis complete."));
 });
 
 const getMySubmissions = asyncHandler(async (req, res) => {
-    const submissions = await Submission.find({ athlete: req.user._id })
-        .populate('test', 'name')
-        .sort({ createdAt: -1 });
+  const submissions = await Submission.find({ athlete: req.user._id })
+    .populate("test", "name")
+    .sort({ createdAt: -1 })
+    .lean(); // return plain objects instead of mongoose docs
 
-    return res.status(200).json(new ApiResponse(200, submissions, "Submissions retrieved successfully."));
+  // ✅ Ensure feedback + report are always included
+  const formatted = submissions.map((sub) => ({
+    _id: sub._id,
+    test: sub.test,
+    score: sub.score,
+    status: sub.status,
+    videoUrl: sub.videoUrl,
+    createdAt: sub.createdAt,
+    feedback: sub.feedback || [],
+    report: sub.analysisReport || {},
+  }));
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, formatted, "Submissions retrieved successfully.")
+    );
 });
 
 export { createSubmission, getMySubmissions };

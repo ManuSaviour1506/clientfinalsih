@@ -2,19 +2,36 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-const userSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema(
+  {
     name: { type: String, required: true, trim: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
     password: { type: String, required: true },
-    role: { type: String, enum: ['athlete', 'coach', 'admin'], default: 'athlete' },
+    role: {
+      type: String,
+      enum: ["athlete", "coach", "admin"],
+      default: "athlete",
+    },
     age: { type: Number },
     height: { type: Number }, // in cm
     weight: { type: Number }, // in kg
     location: {
-        city: { type: String },
-        state: { type: String },
+      city: { type: String },
+      state: { type: String },
     },
-}, { timestamps: true });
+    avatar: {
+      type: String, // Store Cloudinary URL or similar
+      default: "https://placehold.co/150x150/eef2f3/8e9eab?text=Profile",
+    },
+  },
+  { timestamps: true }
+);
 
 // Hash password before saving
 userSchema.pre("save", async function (next) {

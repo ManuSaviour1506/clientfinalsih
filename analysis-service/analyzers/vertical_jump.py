@@ -1,76 +1,62 @@
 import cv2
 import mediapipe as mp
-import numpy as np
 
-def calculate_height(video_path: str, athlete_height_cm: float) -> float:
+def calculate_height(video_path: str, athlete_height_cm: float) -> dict:
     """
-    Calculates vertical jump height in cm.
-    Requires the athlete's actual height for calibration.
+    Calculates vertical jump height with deep feedback.
     """
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print("Error: Could not open video.")
-        return 0.0
+        return {"raw_score": 0, "feedback": ["Could not open video."], "report": {}}
 
-    pixels_per_cm = None
-    hip_y_coords = []
-    is_calibrated = False
+    max_jump_height, start_pos_y, start_pos_x = 0, None, None
+    mistakes, strengths, tips = [], [], []
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-
-        # Convert the BGR image to RGB
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-
-        # Make detection
         results = pose.process(image)
 
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
-        if results.pose_landmarks:
+        try:
             landmarks = results.pose_landmarks.landmark
-            
-            # Use landmarks for calibration and tracking
-            left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
-            right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
-            left_heel = landmarks[mp_pose.PoseLandmark.LEFT_HEEL]
-            right_heel = landmarks[mp_pose.PoseLandmark.RIGHT_HEEL]
+            left_heel_y = landmarks[mp_pose.PoseLandmark.LEFT_HEEL.value].y
+            right_heel_y = landmarks[mp_pose.PoseLandmark.RIGHT_HEEL.value].y
+            avg_heel_y = (left_heel_y + right_heel_y) / 2
 
-            if left_hip.visibility > 0.8 and left_heel.visibility > 0.8:
-                # --- Calibration Step ---
-                # Assume the athlete stands straight in the first few valid frames
-                if not is_calibrated:
-                    pixel_height = abs(left_heel.y - landmarks[mp_pose.PoseLandmark.NOSE].y) * frame.shape[0]
-                    if pixel_height > 0:
-                        pixels_per_cm = pixel_height / athlete_height_cm
-                        is_calibrated = True
-                        print(f"Calibration successful. Pixels per cm: {pixels_per_cm}")
+            if start_pos_y is None:
+                start_pos_y = avg_heel_y
+                start_pos_x = landmarks[mp_pose.PoseLandmark.LEFT_HEEL.value].x
 
-                # --- Tracking Step ---
-                # Average hip Y-coordinate
-                avg_hip_y = (left_hip.y + right_hip.y) / 2
-                hip_y_coords.append(avg_hip_y * frame.shape[0]) # Store in pixel space
+            jump_height = (start_pos_y - avg_heel_y) * athlete_height_cm
+            if jump_height > max_jump_height:
+                max_jump_height = jump_height
+                strengths.append(f"Explosive jump detected: {round(max_jump_height,1)} cm")
+
+            # Landing mistake
+            left_heel_x = landmarks[mp_pose.PoseLandmark.LEFT_HEEL.value].x
+            if start_pos_x and abs(left_heel_x - start_pos_x) * 100 > 30:
+                if "Poor landing" not in mistakes:
+                    mistakes.append("Landed too far from start")
+                    tips.append("Try to land softly and closer to starting point")
+
+        except:
+            pass
 
     cap.release()
     pose.close()
 
-    if not is_calibrated or not hip_y_coords:
-        print("Could not calibrate or track hips.")
-        return 0.0
+    report = {
+        "jump_height_cm": round(max_jump_height, 2),
+        "mistakes": mistakes,
+        "strengths": strengths,
+        "tips": tips,
+        "analysis_summary": f"Best jump height: {round(max_jump_height,2)} cm."
+    }
+    feedback = strengths + mistakes + tips
 
-    # Find the lowest point (crouch) and highest point (jump peak) of the hips
-    crouch_y = max(hip_y_coords)
-    peak_y = min(hip_y_coords)
-    
-    jump_height_pixels = crouch_y - peak_y
-    jump_height_cm = jump_height_pixels / pixels_per_cm
-
-    # Return a positive value, rounded to 2 decimal places
-    return round(abs(jump_height_cm), 2)
+    return {"raw_score": max_jump_height, "feedback": feedback, "report": report}
