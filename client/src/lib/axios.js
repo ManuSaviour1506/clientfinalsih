@@ -3,7 +3,7 @@ import axios from 'axios';
 // BUG FIX 1: baseURL was hardcoded to localhost — breaks in staging/production.
 // Use Vite env variable with localhost as fallback.
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5002/api/v1',
+    baseURL: import.meta.env.VITE_API_URL || 'https://clientfinalsihbk.onrender.com/api/v1',
     withCredentials: true,
 });
 
