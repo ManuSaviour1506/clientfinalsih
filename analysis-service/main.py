@@ -36,6 +36,14 @@ ANALYZER_ROUTER = {
     "endurance_run": endurance.count_high_knees,
 }
 
+@app.get("/")
+async def root():
+    return {
+        "status": "Online",
+        "service": "Khel Pratibha AI Analysis",
+        "location": "Hugging Face Spaces"
+    }
+
 @app.post("/analyze")
 async def analyze_video(
     video: UploadFile = File(...),
